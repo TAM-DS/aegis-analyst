@@ -41,7 +41,15 @@ That last sentence is the product. Isolation was requested. The host was not tak
 
 **Deny** is a third control: `Operator denied. No sandbox call issued.`
 
-Drop those three frames in `docs/screenshots/` when you publish.
+The live frames:
+
+![Analyze — T1486 critical brief](docs/screenshots/01-analyze.png)
+
+![Run isolate — DENIED approval required](docs/screenshots/02-deny-or-run-denied.png)
+
+![Approve — simulated isolate, host still reachable](docs/screenshots/03-approve-simulated.png)
+
+![Analyst dialogue on the open case](docs/screenshots/04-analysis-chat.png)
 
 ---
 
