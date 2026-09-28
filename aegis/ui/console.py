@@ -94,7 +94,7 @@ def build_ui() -> gr.Blocks:
             with gr.Column(scale=2):
                 gr.Markdown("### Case brief")
                 brief_md = gr.Markdown("_Select a case, then click Analyze case._")
-                chat = gr.Chatbot(label="Analyst dialogue", height=280, type="messages")
+                chat = gr.Chatbot(label="Analyst dialogue", height=280)
                 chat_in = gr.Textbox(label="Ask the analyst about the open case")
                 chat_send = gr.Button("Send")
             with gr.Column(scale=1):
