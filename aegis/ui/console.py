@@ -70,7 +70,7 @@ def format_meta(brief: CaseBrief | None) -> str:
 def build_ui() -> gr.Blocks:
     rt = AegisRuntime()
 
-    with gr.Blocks(title="Aegis Analyst", css=CSS, theme=gr.themes.Soft()) as demo:
+    with gr.Blocks(title="Aegis Analyst") as demo:
         gr.Markdown(
             "# AEGIS ANALYST\n"
             "Governed senior SOC analyst — multi-agent reasoner with a deterministic policy engine. "
@@ -79,7 +79,13 @@ def build_ui() -> gr.Blocks:
         with gr.Row():
             with gr.Column(scale=1):
                 gr.Markdown("### Case queue")
-                queue = gr.Dropdown(choices=rt.list_labels(), label="Open case", interactive=True)
+                labels = rt.list_labels()
+                queue = gr.Dropdown(
+                    choices=labels,
+                    value=labels[0] if labels else None,
+                    label="Open case",
+                    interactive=True,
+                )
                 refresh = gr.Button("Refresh queue")
                 note = gr.Textbox(label="Operator note", placeholder="What do you want the analyst to weigh?")
                 analyze_btn = gr.Button("Analyze case", variant="primary")
@@ -87,8 +93,8 @@ def build_ui() -> gr.Blocks:
                 audit_box = gr.Textbox(label="Recent audit events", lines=14)
             with gr.Column(scale=2):
                 gr.Markdown("### Case brief")
-                brief_md = gr.Markdown()
-                chat = gr.Chatbot(label="Analyst dialogue", height=280)
+                brief_md = gr.Markdown("_Select a case, then click Analyze case._")
+                chat = gr.Chatbot(label="Analyst dialogue", height=280, type="messages")
                 chat_in = gr.Textbox(label="Ask the analyst about the open case")
                 chat_send = gr.Button("Send")
             with gr.Column(scale=1):
@@ -105,14 +111,27 @@ def build_ui() -> gr.Blocks:
             return gr.update(choices=rt.list_labels())
 
         def do_analyze(label, operator_note, history):
+            history = history or []
             if not label:
                 return "_Pick a case._", "No case loaded.", history, audit_text()
-            brief = rt.analyze(label, operator_note)
+            try:
+                brief = rt.analyze(label, operator_note)
+            except Exception as exc:
+                err = f"Analyze failed: {exc}"
+                history = history + [
+                    {"role": "user", "content": operator_note or "(analyze)"},
+                    {"role": "assistant", "content": err},
+                ]
+                return err, err, history, audit_text()
             msg = f"Analyzed {brief.case_id} as {brief.severity.value} ({brief.confidence:.2f})."
-            history = (history or []) + [[operator_note or "(no note)", msg]]
+            history = history + [
+                {"role": "user", "content": operator_note or "(analyze)"},
+                {"role": "assistant", "content": msg},
+            ]
             return format_brief(brief), format_meta(brief), history, audit_text()
 
         def do_chat(label, text, history):
+            history = history or []
             if not label or not text:
                 return history, ""
             rec = rt.case_from_label(label)
@@ -125,7 +144,10 @@ def build_ui() -> gr.Blocks:
                 f"Techniques: {', '.join(f.technique_id for f in brief.findings) or 'none'}. "
                 f"Ask me to analyze again if you changed the operator note."
             )
-            history = (history or []) + [[text, answer]]
+            history = history + [
+                {"role": "user", "content": text},
+                {"role": "assistant", "content": answer},
+            ]
             return history, ""
 
         def audit_text() -> str:
@@ -151,7 +173,7 @@ def build_ui() -> gr.Blocks:
 
 def main() -> None:
     demo = build_ui()
-    demo.launch()
+    demo.launch(theme=gr.themes.Soft(), css=CSS)
 
 
 if __name__ == "__main__":
