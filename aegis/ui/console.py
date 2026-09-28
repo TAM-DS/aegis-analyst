@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 import gradio as gr
 
 from aegis.app import AegisRuntime
@@ -66,7 +68,8 @@ def action_choices(brief: CaseBrief | None) -> list[str]:
 def action_id_from_choice(choice: str) -> str:
     if not choice:
         return ""
-    return choice.rsplit("·", 1)[-1].strip()
+    match = re.search(r"act-[a-f0-9]+", choice)
+    return match.group(0) if match else ""
 
 
 def format_meta(brief: CaseBrief | None) -> str:
@@ -129,9 +132,16 @@ def build_ui() -> gr.Blocks:
                 deny = gr.Button("Deny")
                 exec_out = gr.Textbox(label="Sandbox result", lines=6)
 
-        def refresh_queue():
+        def refresh_queue(selected: str | None = None):
             labels = rt.list_labels()
-            return gr.update(choices=labels, value=labels[0] if labels else None)
+            value = selected if selected in labels else None
+            if value is None:
+                cid = re.search(r"case-[a-f0-9]+", selected or "")
+                if cid:
+                    value = next((row for row in labels if cid.group(0) in row), None)
+            if value is None:
+                value = labels[0] if labels else None
+            return gr.update(choices=labels, value=value)
 
         def empty_actions():
             return gr.update(choices=[], value=None)
@@ -139,7 +149,7 @@ def build_ui() -> gr.Blocks:
         def do_analyze(label, operator_note, history):
             history = history or []
             if not label:
-                return "_Pick a case._", "No case loaded.", history, audit_text(), empty_actions(), refresh_queue()
+                return "_Pick a case._", "No case loaded.", history, audit_text(), empty_actions(), refresh_queue(label)
             try:
                 brief = rt.analyze(label, operator_note)
             except Exception as exc:
@@ -148,7 +158,7 @@ def build_ui() -> gr.Blocks:
                     {"role": "user", "content": operator_note or "(analyze)"},
                     {"role": "assistant", "content": err},
                 ]
-                return err, err, history, audit_text(), empty_actions(), refresh_queue()
+                return err, err, history, audit_text(), empty_actions(), refresh_queue(label)
             msg = f"Analyzed {brief.case_id} as {brief.severity.value} ({brief.confidence:.2f})."
             history = history + [
                 {"role": "user", "content": operator_note or "(analyze)"},
@@ -156,7 +166,7 @@ def build_ui() -> gr.Blocks:
             ]
             choices = action_choices(brief)
             action_update = gr.update(choices=choices, value=choices[0] if choices else None)
-            return format_brief(brief), format_meta(brief), history, audit_text(), action_update, refresh_queue()
+            return format_brief(brief), format_meta(brief), history, audit_text(), action_update, refresh_queue(label)
 
         def do_chat(label, text, history):
             history = history or []
@@ -190,7 +200,7 @@ def build_ui() -> gr.Blocks:
                 return "Analyze a case and select an action first."
             return rt.execute(label, aid, approved=approved_flag)
 
-        refresh.click(refresh_queue, outputs=queue)
+        refresh.click(lambda: refresh_queue(), outputs=queue)
         analyze_btn.click(
             do_analyze,
             [queue, note, chat],
