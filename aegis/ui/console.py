@@ -52,6 +52,23 @@ def format_brief(brief: CaseBrief | None) -> str:
 """
 
 
+def action_choices(brief: CaseBrief | None) -> list[str]:
+    if not brief:
+        return []
+    rows = []
+    for a in brief.recommended_actions:
+        gate = "APPROVAL REQUIRED" if a.requires_approval else "read-ok"
+        done = " · executed" if a.executed else ""
+        rows.append(f"{a.title} [{a.risk.value} · {gate}{done}] · {a.action_id}")
+    return rows
+
+
+def action_id_from_choice(choice: str) -> str:
+    if not choice:
+        return ""
+    return choice.rsplit("·", 1)[-1].strip()
+
+
 def format_meta(brief: CaseBrief | None) -> str:
     if not brief:
         return "No case loaded."
@@ -100,20 +117,29 @@ def build_ui() -> gr.Blocks:
             with gr.Column(scale=1):
                 gr.Markdown("### Structured metadata")
                 meta = gr.Textbox(label="Live case fields", lines=10)
-                action_id = gr.Textbox(label="Action ID to execute")
+                action_pick = gr.Dropdown(
+                    label="Recommended action",
+                    choices=[],
+                    interactive=True,
+                    info="Pick an action, then Run, Approve, or Deny. No ID paste.",
+                )
                 with gr.Row():
-                    run_read = gr.Button("Run (if no approval needed)")
+                    run_read = gr.Button("Run")
                     approve = gr.Button("Approve + execute", variant="primary")
-                    deny = gr.Button("Deny")
+                deny = gr.Button("Deny")
                 exec_out = gr.Textbox(label="Sandbox result", lines=6)
 
         def refresh_queue():
-            return gr.update(choices=rt.list_labels())
+            labels = rt.list_labels()
+            return gr.update(choices=labels, value=labels[0] if labels else None)
+
+        def empty_actions():
+            return gr.update(choices=[], value=None)
 
         def do_analyze(label, operator_note, history):
             history = history or []
             if not label:
-                return "_Pick a case._", "No case loaded.", history, audit_text()
+                return "_Pick a case._", "No case loaded.", history, audit_text(), empty_actions(), refresh_queue()
             try:
                 brief = rt.analyze(label, operator_note)
             except Exception as exc:
@@ -122,13 +148,15 @@ def build_ui() -> gr.Blocks:
                     {"role": "user", "content": operator_note or "(analyze)"},
                     {"role": "assistant", "content": err},
                 ]
-                return err, err, history, audit_text()
+                return err, err, history, audit_text(), empty_actions(), refresh_queue()
             msg = f"Analyzed {brief.case_id} as {brief.severity.value} ({brief.confidence:.2f})."
             history = history + [
                 {"role": "user", "content": operator_note or "(analyze)"},
                 {"role": "assistant", "content": msg},
             ]
-            return format_brief(brief), format_meta(brief), history, audit_text()
+            choices = action_choices(brief)
+            action_update = gr.update(choices=choices, value=choices[0] if choices else None)
+            return format_brief(brief), format_meta(brief), history, audit_text(), action_update, refresh_queue()
 
         def do_chat(label, text, history):
             history = history or []
@@ -156,16 +184,21 @@ def build_ui() -> gr.Blocks:
                 f"{e.ts.isoformat(timespec='seconds')} {e.actor} {e.action} {e.case_id or ''}" for e in events
             )
 
-        def run_action(label, aid, approved_flag):
+        def run_action(label, choice, approved_flag):
+            aid = action_id_from_choice(choice)
             if not label or not aid:
-                return "Need a case and an action id."
-            return rt.execute(label, aid.strip(), approved=approved_flag)
+                return "Analyze a case and select an action first."
+            return rt.execute(label, aid, approved=approved_flag)
 
         refresh.click(refresh_queue, outputs=queue)
-        analyze_btn.click(do_analyze, [queue, note, chat], [brief_md, meta, chat, audit_box])
+        analyze_btn.click(
+            do_analyze,
+            [queue, note, chat],
+            [brief_md, meta, chat, audit_box, action_pick, queue],
+        )
         chat_send.click(do_chat, [queue, chat_in, chat], [chat, chat_in])
-        run_read.click(lambda l, a: run_action(l, a, False), [queue, action_id], exec_out)
-        approve.click(lambda l, a: run_action(l, a, True), [queue, action_id], exec_out)
+        run_read.click(lambda l, a: run_action(l, a, False), [queue, action_pick], exec_out)
+        approve.click(lambda l, a: run_action(l, a, True), [queue, action_pick], exec_out)
         deny.click(lambda: "Operator denied. No sandbox call issued.", outputs=exec_out)
 
     return demo
