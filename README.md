@@ -161,14 +161,5 @@ CVE RAG answers "what is this CVE?" Junior fatigue is "should I isolate this hos
 
 Junior analysts freeze or over-contain. Aegis drafts the brief and the action list. Policy stamps disruptive actions as approval-required. The operator can deny with no sandbox call, run a read tool, or approve a simulated isolate. The host stays reachable. That is how you put an agent in a SOC without giving it the building.
 
----
 
-## Status
 
-**v1 is demo-complete.** Clone, run, analyze, deny, approve.
-
-Do not add real EDR, a decorative graph library, or CVE RAG unless a specific job requires that integration.
-
-Optional later (only if a conversation asks): Grok narrative that cannot skip the gate, per-row action buttons, recruiter one-liner script.
-
-Portfolio system for Tracy Manning / TAM-DS.
