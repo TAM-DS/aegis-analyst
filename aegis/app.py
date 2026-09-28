@@ -24,8 +24,12 @@ class AegisRuntime:
         return [self._label(c) for c in self.store.list_cases()]
 
     def case_from_label(self, label: str) -> CaseRecord | None:
-        case_id = label.split(" ", 1)[0]
-        return self.store.get_case(case_id)
+        import re
+
+        match = re.search(r"case-[a-f0-9]+", label or "")
+        if not match:
+            return None
+        return self.store.get_case(match.group(0))
 
     def analyze(self, label: str, note: str = "") -> CaseBrief:
         rec = self.case_from_label(label)
@@ -72,4 +76,4 @@ class AegisRuntime:
 
     @staticmethod
     def _label(c: CaseRecord) -> str:
-        return f"{c.case_id} · {c.severity.value.upper()} · {c.status.value} · {c.title}"
+        return f"{c.title} — {c.severity.value.upper()} · {c.status.value} · {c.case_id}"
