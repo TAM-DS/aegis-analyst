@@ -1,4 +1,4 @@
-# AEGIS ANALYST
+# AEGIS SENIOR CYBER ANALYST
 
 Governed senior SOC analyst agent. Three-panel operator console.
 
