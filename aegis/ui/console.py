@@ -75,8 +75,8 @@ def action_choices(brief: CaseBrief | None) -> list[str]:
     rows = []
     for a in brief.recommended_actions:
         gate = "APPROVAL REQUIRED" if a.requires_approval else "read-ok"
-        done = " · executed" if a.executed else ""
-        rows.append(f"{a.title} [{a.risk.value} · {gate}{done}] · {a.action_id}")
+        # Keep dropdown values stable across execution updates. The brief shows status.
+        rows.append(f"{a.title} [{a.risk.value} · {gate}] · {a.action_id}")
     return rows
 
 
