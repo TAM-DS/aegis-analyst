@@ -19,6 +19,8 @@ CSS = """
   background: rgba(85, 133, 177, .10); }
 .aegis-guide p { margin: 0; }
 .aegis-section h3 { letter-spacing: .02em; }
+.aegis-container { line-height: 1.5; }
+.aegis-container .prose { line-height: 1.55; }
 """
 
 
@@ -103,7 +105,7 @@ def format_meta(brief: CaseBrief | None) -> str:
 def build_ui() -> gr.Blocks:
     rt = AegisRuntime()
 
-    with gr.Blocks(title="Aegis Analyst") as demo:
+    with gr.Blocks(title="Aegis Analyst", elem_classes=["aegis-container"]) as demo:
         gr.Markdown(
             "# AEGIS ANALYST\n"
             "**GOVERNED SECURITY OPERATIONS**  ·  Paper-only response simulation\n\n"
@@ -130,17 +132,18 @@ def build_ui() -> gr.Blocks:
                 refresh = gr.Button("Refresh queue")
                 note = gr.Textbox(label="Investigation note (optional)", placeholder="Add context or a question for this investigation.")
                 analyze_btn = gr.Button("Analyze selected case", variant="primary")
-                gr.Markdown("### Local audit trail")
-                audit_box = gr.Textbox(label="Recent audit events", lines=14)
+                with gr.Accordion("Local audit trail · expand to inspect decisions", open=False):
+                    audit_box = gr.Textbox(label="Recent audit events", lines=9, interactive=False)
             with gr.Column(scale=2):
                 gr.Markdown("### 02 · Investigation brief", elem_classes=["aegis-section"])
                 brief_md = gr.Markdown("_Select a case and choose Analyze selected case to see its evidence, ATT&CK mapping, and proposed response._")
-                chat = gr.Chatbot(label="Case dialogue · deterministic summary", height=280)
-                chat_in = gr.Textbox(label="Case question", placeholder="Ask about the analyzed case; re-analyze to apply a new investigation note.")
-                chat_send = gr.Button("Send")
+                with gr.Accordion("Case dialogue · optional deterministic summary", open=False):
+                    chat = gr.Chatbot(label="Analyst dialogue", height=220)
+                    chat_in = gr.Textbox(label="Case question", placeholder="Re-analyze to apply a new investigation note.")
+                    chat_send = gr.Button("Send")
             with gr.Column(scale=1):
                 gr.Markdown("### 03 · Decision and controls", elem_classes=["aegis-section"])
-                meta = gr.Textbox(label="Case status · rule-based indicators", lines=9, interactive=False)
+                meta = gr.Textbox(label="Case status · rule-based indicators", lines=7, interactive=False)
                 action_pick = gr.Dropdown(
                     label="Recommended action",
                     choices=[],
@@ -222,8 +225,22 @@ def build_ui() -> gr.Blocks:
         def run_action(label, choice, approved_flag):
             aid = action_id_from_choice(choice)
             if not label or not aid:
-                return "Analyze a case and select an action first."
-            return rt.execute(label, aid, approved=approved_flag)
+                return (
+                    "Analyze a case and select an action first.",
+                    audit_text(), gr.update(), gr.update(), gr.update(),
+                )
+            result = rt.execute(label, aid, approved=approved_flag)
+            rec = rt.case_from_label(label)
+            brief = rec.brief if rec else None
+            choices = action_choices(brief)
+            selected = choice if choice in choices else (choices[0] if choices else None)
+            return (
+                result,
+                audit_text(),
+                format_brief(brief),
+                format_meta(brief),
+                gr.update(choices=choices, value=selected),
+            )
 
         refresh.click(lambda: refresh_queue(), outputs=queue)
         analyze_btn.click(
@@ -232,8 +249,9 @@ def build_ui() -> gr.Blocks:
             [brief_md, meta, chat, audit_box, action_pick, queue],
         )
         chat_send.click(do_chat, [queue, chat_in, chat], [chat, chat_in])
-        run_read.click(lambda l, a: run_action(l, a, False), [queue, action_pick], exec_out)
-        approve.click(lambda l, a: run_action(l, a, True), [queue, action_pick], exec_out)
+        decision_outputs = [exec_out, audit_box, brief_md, meta, action_pick]
+        run_read.click(lambda l, a: run_action(l, a, False), [queue, action_pick], decision_outputs)
+        approve.click(lambda l, a: run_action(l, a, True), [queue, action_pick], decision_outputs)
         deny.click(lambda: "Operator denied. No sandbox call issued.", outputs=exec_out)
 
     return demo
