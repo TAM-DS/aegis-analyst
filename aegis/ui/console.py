@@ -9,7 +9,16 @@ from aegis.schema.models import CaseBrief
 
 
 CSS = """
-.aegis-header {font-family: ui-sans-serif, system-ui; letter-spacing: 0.04em;}
+:root { --aegis-navy: #11243a; --aegis-blue: #356b98; --aegis-red: #a94444; }
+.gradio-container { max-width: 1600px !important; }
+.aegis-header { border: 1px solid #344e68; border-radius: 14px; padding: 22px 26px;
+  background: linear-gradient(120deg, #10243a, #24465f); color: #f2f6fb; }
+.aegis-header h1 { color: #ffffff !important; letter-spacing: .08em; margin-bottom: 6px; }
+.aegis-header p { color: #dce7f2 !important; margin-bottom: 4px; }
+.aegis-guide { border-left: 4px solid #5689b5; padding: 10px 14px; border-radius: 8px;
+  background: rgba(85, 133, 177, .10); }
+.aegis-guide p { margin: 0; }
+.aegis-section h3 { letter-spacing: .02em; }
 """
 
 
@@ -29,27 +38,31 @@ def format_brief(brief: CaseBrief | None) -> str:
     ) or "- none"
     evidence = "\n".join(f"- ({e.source}/{e.kind}) {e.summary}" for e in brief.evidence[:8]) or "- none"
     violations = "\n".join(f"- {v}" for v in brief.policy_violations) or "- none"
+    approvals = sum(a.requires_approval and not a.executed for a in brief.recommended_actions)
     return f"""# {brief.title}
 
-**Case** `{brief.case_id}`  
-**Status** `{brief.status.value}` · **Severity** `{brief.severity.value}` · **Confidence** `{brief.confidence:.2f}`
+**{brief.severity.value.upper()} severity** · **{brief.status.value.replace('_', ' ').title()}** ·
+Rule-based confidence **{brief.confidence:.2f}** · Case `{brief.case_id}`
 
-## Narrative
+> **Decision status:** {approvals} disruptive action(s) awaiting explicit approval.
+> Recommendations do not authorize execution; containment results are simulated.
+
+## Analyst assessment
 {brief.narrative}
 
-## Hypotheses
-{hypos}
-
-## ATT&CK
-{findings}
-
-## Recommended actions
-{actions}
-
-## Evidence
+## Evidence reviewed
 {evidence}
 
-## Policy gate
+## ATT&CK mapping
+{findings}
+
+## Working hypotheses
+{hypos}
+
+## Proposed next actions
+{actions}
+
+## Policy checks
 {violations}
 """
 
@@ -74,7 +87,7 @@ def action_id_from_choice(choice: str) -> str:
 
 def format_meta(brief: CaseBrief | None) -> str:
     if not brief:
-        return "No case loaded."
+        return "Analyze a case to see severity, ATT&CK mapping, and approval requirements."
     techs = ", ".join(f.technique_id for f in brief.findings) or "\u2014"
     pending = [a for a in brief.recommended_actions if a.requires_approval and not a.executed]
     return (
@@ -93,12 +106,20 @@ def build_ui() -> gr.Blocks:
     with gr.Blocks(title="Aegis Analyst") as demo:
         gr.Markdown(
             "# AEGIS ANALYST\n"
-            "Governed senior SOC analyst — multi-agent reasoner with a deterministic policy engine. "
-            "Disruptive actions never execute without an approval gate. Execution is sandboxed and simulated."
+            "**GOVERNED SECURITY OPERATIONS**  ·  Paper-only response simulation\n\n"
+            "Investigate seeded cases, review evidence, and make explicit response decisions. "
+            "Policy—not the analyst narrative—controls which simulated actions can run.",
+            elem_classes=["aegis-header"],
+        )
+        gr.Markdown(
+            "**WORKFLOW**  01 · Select and analyze a case  →  "
+            "02 · Review evidence and proposed actions  →  "
+            "03 · Run a read-only action, deny, or explicitly approve a simulated response.",
+            elem_classes=["aegis-guide"],
         )
         with gr.Row():
             with gr.Column(scale=1):
-                gr.Markdown("### Case queue")
+                gr.Markdown("### 01 · Incident queue", elem_classes=["aegis-section"])
                 labels = rt.list_labels()
                 queue = gr.Dropdown(
                     choices=labels,
@@ -107,30 +128,34 @@ def build_ui() -> gr.Blocks:
                     interactive=True,
                 )
                 refresh = gr.Button("Refresh queue")
-                note = gr.Textbox(label="Operator note", placeholder="What do you want the analyst to weigh?")
-                analyze_btn = gr.Button("Analyze case", variant="primary")
-                gr.Markdown("### Audit tail")
+                note = gr.Textbox(label="Investigation note (optional)", placeholder="Add context or a question for this investigation.")
+                analyze_btn = gr.Button("Analyze selected case", variant="primary")
+                gr.Markdown("### Local audit trail")
                 audit_box = gr.Textbox(label="Recent audit events", lines=14)
             with gr.Column(scale=2):
-                gr.Markdown("### Case brief")
-                brief_md = gr.Markdown("_Select a case, then click Analyze case._")
-                chat = gr.Chatbot(label="Analyst dialogue", height=280)
-                chat_in = gr.Textbox(label="Ask the analyst about the open case")
+                gr.Markdown("### 02 · Investigation brief", elem_classes=["aegis-section"])
+                brief_md = gr.Markdown("_Select a case and choose Analyze selected case to see its evidence, ATT&CK mapping, and proposed response._")
+                chat = gr.Chatbot(label="Case dialogue · deterministic summary", height=280)
+                chat_in = gr.Textbox(label="Case question", placeholder="Ask about the analyzed case; re-analyze to apply a new investigation note.")
                 chat_send = gr.Button("Send")
             with gr.Column(scale=1):
-                gr.Markdown("### Structured metadata")
-                meta = gr.Textbox(label="Live case fields", lines=10)
+                gr.Markdown("### 03 · Decision and controls", elem_classes=["aegis-section"])
+                meta = gr.Textbox(label="Case status · rule-based indicators", lines=9, interactive=False)
                 action_pick = gr.Dropdown(
                     label="Recommended action",
                     choices=[],
                     interactive=True,
-                    info="Pick an action, then Run, Approve, or Deny. No ID paste.",
+                    info="Read-only actions can run directly. Disruptive actions require explicit approval.",
                 )
                 with gr.Row():
-                    run_read = gr.Button("Run")
-                    approve = gr.Button("Approve + execute", variant="primary")
-                deny = gr.Button("Deny")
-                exec_out = gr.Textbox(label="Sandbox result", lines=6)
+                    run_read = gr.Button("Run without approval")
+                    approve = gr.Button("Approve + simulate", variant="primary")
+                deny = gr.Button("Deny selected action")
+                exec_out = gr.Textbox(label="Execution decision · simulated result", lines=6, interactive=False)
+                gr.Markdown(
+                    "**Execution boundary:** unapproved disruptive actions are denied. "
+                    "An approved containment request remains a simulation; it does not isolate a real host."
+                )
 
         def refresh_queue(selected: str | None = None):
             labels = rt.list_labels()
