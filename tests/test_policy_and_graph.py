@@ -1,6 +1,7 @@
 from aegis.app import AegisRuntime
 from aegis.governance.policy import PolicyEngine
 from aegis.schema.models import ActionRisk, CaseBrief, CaseStatus, RecommendedAction, Severity
+from aegis.ui.console import action_choices
 
 
 def test_disruptive_actions_require_approval():
@@ -45,3 +46,27 @@ def test_sandbox_blocks_unapproved_disruptive():
     assert result.startswith("DENIED")
     ok = rt.execute(label, disruptive.action_id, approved=True)
     assert "SIMULATED" in ok or "READ" in ok
+
+
+def test_action_dropdown_label_stays_stable_after_execution():
+    action = RecommendedAction(
+        title="Enrich file hash",
+        description="Read-only enrichment",
+        risk=ActionRisk.READ,
+        requires_approval=False,
+        tool_name="enrich_hash",
+    )
+    brief = CaseBrief(
+        case_id="case-test",
+        title="Stable selection",
+        status=CaseStatus.INVESTIGATING,
+        severity=Severity.MEDIUM,
+        confidence=0.5,
+        narrative="n",
+        recommended_actions=[action],
+    )
+    before = action_choices(brief)
+    action.executed = True
+    after = action_choices(brief)
+    assert before == after
+    assert action.action_id in after[0]
